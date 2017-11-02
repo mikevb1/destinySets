@@ -16,7 +16,7 @@ import DestinyAuthProvider from 'app/lib/DestinyAuthProvider';
 
 import { mapItems /*, logItems */ } from './utils';
 
-import * as telemetry from 'app/lib/telemetry';
+// import * as telemetry from 'app/lib/telemetry';
 
 import {
   HUNTER,
