@@ -1,12 +1,13 @@
 import React, { Component } from 'react';
-import { sortBy } from 'lodash';
+import { sortBy, keyBy } from 'lodash';
 import cx from 'classnames';
 import copy from 'copy-text-to-clipboard';
 
-import { getDefinition } from 'app/lib/manifestData';
+// import { getDefinition } from 'app/lib/manifestData';
 
 import * as destiny from 'app/lib/destiny';
 import * as ls from 'app/lib/ls';
+import { query } from 'app/lib/apollo';
 import Header from 'app/components/Header';
 import Footer from 'app/components/Footer';
 import Loading from 'app/views/Loading';
@@ -14,7 +15,7 @@ import LoginUpsell from 'app/components/LoginUpsell';
 import ActivityList from 'app/components/ActivityList';
 import DestinyAuthProvider from 'app/lib/DestinyAuthProvider';
 
-import { mapItems /*, logItems */ } from './utils';
+import { mapItems, flatMapSetItems /*, logItems */ } from './utils';
 
 // import * as telemetry from 'app/lib/telemetry';
 
@@ -61,6 +62,27 @@ const defaultFilter = {
   [SHOW_COLLECTED]: true
 };
 
+const ITEM_QUERY = `
+  query gg($itemHashes: [ID]!) {
+    items(hashes: $itemHashes) {
+      hash
+      classType
+      displayProperties {
+        name
+        description
+        icon
+      }
+      inventory {
+        tierType {
+          displayProperties {
+            name
+          }
+        }
+      }
+    }
+  }
+`;
+
 class Gearsets extends Component {
   inventory = [];
 
@@ -78,14 +100,16 @@ class Gearsets extends Component {
   componentDidMount() {
     this.inventory = ls.getInventory();
 
-    this.dataPromise = Promise.all([
-      getDefinition('DestinyInventoryItemDefinition'),
-      getDefinition('DestinyVendorDefinition')
-    ]);
+    this.fetchGraphData();
 
-    this.dataPromise.then(result => {
-      this.processSets(...result);
-    });
+    // this.dataPromise = Promise.all([
+    //   getDefinition('DestinyInventoryItemDefinition'),
+    //   getDefinition('DestinyVendorDefinition')
+    // ]);
+
+    // this.dataPromise.then(result => {
+    //   this.processSets(...result);
+    // });
   }
 
   componentWillReceiveProps(newProps) {
@@ -93,23 +117,30 @@ class Gearsets extends Component {
       this.fetchCharacters(newProps);
     }
 
-    if (this.props.route !== newProps.route) {
-      this.dataPromise.then(result => {
-        this.processSets(...result);
-      });
-    }
+    // if (this.props.route !== newProps.route) {
+    //   this.dataPromise.then(result => {
+    //     this.processSets(...result);
+    //   });
+    // }
   }
 
-  processSets = (itemDefs, vendorDefs) => {
+  processSets = (_itemDefs, _vendorDefs) => {
+    console.log('Running processSets');
+
+    const itemDefs = this.itemDefs; // TODO: avoid putting this on instance
     const sets = VARIATIONS[this.props.route.variation];
 
     const allItems = Object.values(itemDefs);
 
-    const kioskItems = this.profile
-      ? destiny.collectItemsFromKiosks(this.profile, itemDefs, vendorDefs)
-      : [];
+    // const kioskItems = this.profile
+    //   ? destiny.collectItemsFromKiosks(this.profile, itemDefs, vendorDefs)
+    //   : [];
+
+    const kioskItems = [];
 
     const inventory = [...this.inventory, ...kioskItems];
+
+    console.log('Inventory:', inventory);
 
     // this.profile && itemDefs && logItems(this.profile, itemDefs);
 
@@ -138,7 +169,11 @@ class Gearsets extends Component {
       return merge(group, { sets });
     });
 
+    console.log('Raw groups:', this.rawGroups);
+
     const filteredGroups = this.filterGroups(this.rawGroups);
+
+    console.log('Filtered groups:', filteredGroups);
 
     const emblem = itemDefs[this.emblemHash];
 
@@ -151,6 +186,8 @@ class Gearsets extends Component {
 
   filterGroups = (rawGroups, _filter) => {
     const filter = _filter || this.state.filter;
+
+    console.log('Item filter:', filter);
 
     // fuck me, this is bad. filter all the items
     const finalGroups = rawGroups.reduce((groupAcc, _group) => {
@@ -226,6 +263,7 @@ class Gearsets extends Component {
   };
 
   fetchCharacters = (props = this.props) => {
+    console.log('fetchCharacters', props);
     if (!props.isAuthenticated) {
       return;
     }
@@ -285,8 +323,29 @@ class Gearsets extends Component {
       }
     });
 
-    this.dataPromise.then(result => {
-      this.processSets(...result);
+    console.log('Inventory:', this.inventory);
+
+    this.processSets();
+
+    // this.fetchGraphData(this.inventory);
+
+    // this.dataPromise.then(result => {
+    //   this.processSets(...result);
+    // });
+  };
+
+  fetchGraphData = () => {
+    // Collect item IDs from the sets list
+    const setItems = flatMapSetItems(setsSets);
+
+    console.log('All set items:', setItems);
+
+    query(ITEM_QUERY, { itemHashes: setItems }).then(gql => {
+      this.itemDefs = keyBy(gql.data.items, i => i.hash);
+
+      console.log('All set item defs:', this.itemDefs);
+
+      this.processSets();
     });
   };
 
@@ -324,9 +383,9 @@ class Gearsets extends Component {
       displayFilters
     } = this.state;
 
-    if (loading) {
-      return <Loading>Loading...</Loading>;
-    }
+    // if (loading) {
+    //   return <Loading>Loading...</Loading>;
+    // }
 
     return (
       <div className={styles.root}>

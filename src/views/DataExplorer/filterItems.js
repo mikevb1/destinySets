@@ -34,8 +34,6 @@ sets.forEach(category => {
   });
 });
 
-console.log('SET_ITEMS:', SET_ITEMS);
-
 function getRandom(arr, n) {
   var result = new Array(n),
     len = arr.length,
